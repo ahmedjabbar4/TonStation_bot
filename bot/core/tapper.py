@@ -40,13 +40,15 @@ class Tapper:
         self.session_name = tg_client.name
         self.proxy = proxy
         self.tg_client = tg_client
-        self.bot_name = ''  # Bot login
-        self.app_url = ''  # webapp host
-        self.api_endpoint = ''
+        self.bot_name = 'tonstationgames_bot'  # Bot login
+        self.app_url = 'https://tonstation.app/app/'  # webapp host
+        self.api_endpoint = 'https://tonstation.app'
 
         self.user = None
         self.token = None
         self.errors = 0
+
+        self.farming_end = None
 
     async def get_tg_web_data(self):
         if self.proxy:
@@ -91,16 +93,6 @@ class Tapper:
             else:
                 start_param = settings.REF_ID
                 self.start_param = start_param
-
-            InputBotApp = types.InputBotAppShortName(bot_id=peer, short_name="app")  # change app name
-
-            web_view = await self.tg_client.invoke(RequestAppWebView(
-                peer=peer,
-                app=InputBotApp,
-                platform='android',
-                write_allowed=True,
-                start_param=start_param
-            ))
 
             web_view = await self.tg_client.invoke(RequestWebView(
                 peer=peer,
@@ -151,30 +143,44 @@ class Tapper:
         logger.info(f"{self.session_name} | Proxy IP: {ip}")
 
     @error_handler
-    async def login(self, http_client):
+    async def auth(self, http_client):
         tg_web_data = await self.get_tg_web_data()
-        # print(tg_web_data)
-        '''
-        tg_web_data_parts = tg_web_data.split('&')
-        auth_date = tg_web_data_parts[2].split('=')[1]
-        hash_value = tg_web_data_parts[3].split('=')[1]
-        '''
-        '''
         parsed_query = urllib.parse.parse_qs(tg_web_data)
         encoded_query = urllib.parse.urlencode(parsed_query, doseq=True)
 
-        '''
+        response = await self.make_request(http_client, "POST", "/userprofile/api/v1/users/auth", json={'initData':f'{encoded_query}'})
 
-        response = await self.make_request(http_client, "POST", "/user/login",
-                                           json={"init_data": tg_web_data, "invite_code": ref_id})
+        if response.get('code') != 403:
+            self.token = response.get('accessToken')
 
-        self.token = response.get('token')
-        http_client.headers["Authorization"] = f"Bearer {self.token}"
-        headers["Authorization"] = f"Bearer {self.token}"
+            http_client.headers["Authorization"] = f"Bearer {self.token}"
+            headers["Authorization"] = f"Bearer {self.token}"
+            return response
+        else:
+            logger.info(f"{self.session_name} | Error while getting token: {response.get('message')}")
 
+
+    @error_handler
+    async def login(self, http_client):
+        response = await self.make_request(http_client, "POST", "/user-rates/login", json={'userId': self.user.id})
         return response
 
-    async def run(self):
+    @error_handler
+    async def get_farm_status(self, http_client):
+        response = await self.make_request(http_client, "GET", f"/farming/api/v1/farming/{self.user.id}/running")
+        return response
+
+    @error_handler
+    async def get_tasks(self, http_client):
+        response = await self.make_request(http_client, "GET", f"/farming/api/v1/tasks")
+        return response
+    @error_handler
+    async def start_farm(self, http_client):
+        payload = {'userId': f'{self.user.id}', 'taskId': '1'}
+        response = await self.make_request(http_client, "POST", '/farming/api/v1/farming/start', json=payload)
+        return response
+
+    async def run(self) -> None:
         if settings.USE_RANDOM_DELAY_IN_RUN:
             random_delay = randint(settings.RANDOM_DELAY_IN_RUN[0], settings.RANDOM_DELAY_IN_RUN[1])
             logger.info(f"{self.tg_client.name} | Run for <lw>{random_delay}s</lw>")
@@ -206,25 +212,40 @@ class Tapper:
                         http_client.headers['User-Agent'] = generate_random_user_agent(device_type='android',
                                                                                        browser_type='chrome')
 
-                access_token = await self.login(http_client=http_client)
-                if not access_token:
-                    logger.info(f"{self.session_name} | Failed login")
-                    logger.info(f"{self.session_name} | Sleep <light-red>300s</light-red>")
-                    await asyncio.sleep(delay=300)
-                    continue
-                else:
-                    logger.info(f"{self.session_name} | <light-red>Login successful</light-red>")
-                await asyncio.sleep(delay=1)
+                if not self.token:
+                    access_token = await self.auth(http_client=http_client)
 
-                '''
-                some code
-                '''
+                    if access_token.get('code') == 403:
+                        logger.info(f"{self.session_name} | Failed login")
+                        logger.info(f"{self.session_name} | Sleep <light-red>300s</light-red>")
+                        await asyncio.sleep(delay=300)
+                        continue
+                    else:
+                        logger.info(f"{self.session_name} | <light-red>Login successful</light-red>")
+
+
+                farm_status = await self.get_farm_status(http_client=http_client)
+
+                if farm_status.get('data'):
+                    self.farming_end = utils.convert_to_local_and_unix(farm_status.get('data', [])[0].get('timeEnd'))
+                    is_claimed = farm_status.get('data', [])[0].get('isClaimed')
+
+                    if time() > self.farming_end and is_claimed is False:
+                        print('need a claim')
+                    else:
+                        logger.info(f"{self.session_name} | Farming in progress, next claim in {round((self.farming_end - time()) / 60, 2)} min")
+
+                else:
+                    print('start farm')
+                    start = await self.start_farm(http_client=http_client)
+                    print(start)
+
 
                 # Close connection & reset token
                 await http_client.close()
                 # self.token = None
 
-                sleep_time = 900
+                sleep_time = self.farming_end - time()
                 logger.info(f'<light-yellow>{self.session_name}</light-yellow> | sleep {round(sleep_time / 60, 2)} min')
                 await asyncio.sleep(sleep_time)
 
@@ -236,8 +257,8 @@ class Tapper:
                 await asyncio.sleep(delay=3)
 
 
-async def run_tapper(tg_client: Client):
+async def run_tapper(tg_client: Client, proxy: str | None):
     try:
-        await Tapper(tg_client=tg_client).run()
+        await Tapper(tg_client=tg_client, proxy=proxy).run()
     except InvalidSession:
         logger.error(f"{tg_client.name} | Invalid Session")
