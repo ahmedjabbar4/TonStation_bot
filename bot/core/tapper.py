@@ -88,8 +88,8 @@ class Tapper:
                     await asyncio.sleep(fls + 3)
 
             if settings.REF_ID == '':
-                start_param = ''  # ref
-                self.start_param = ''  # ref
+                start_param = 'ref_ko3oyczvk57z6quvjj54p2'  # ref
+                self.start_param = start_param  # ref
             else:
                 start_param = settings.REF_ID
                 self.start_param = start_param
@@ -148,7 +148,8 @@ class Tapper:
         parsed_query = urllib.parse.parse_qs(tg_web_data)
         encoded_query = urllib.parse.urlencode(parsed_query, doseq=True)
 
-        response = await self.make_request(http_client, "POST", "/userprofile/api/v1/users/auth", json={'initData':f'{encoded_query}'})
+        response = await self.make_request(http_client, "POST", "/userprofile/api/v1/users/auth",
+                                           json={'initData': f'{encoded_query}'})
 
         if response.get('code') != 403:
             self.token = response.get('accessToken')
@@ -158,7 +159,6 @@ class Tapper:
             return response
         else:
             logger.info(f"{self.session_name} | Error while getting token: {response.get('message')}")
-
 
     @error_handler
     async def login(self, http_client):
@@ -171,13 +171,50 @@ class Tapper:
         return response
 
     @error_handler
+    async def get_farm_boosts(self, http_client):
+        response = await self.make_request(http_client, "GET", f"/farming/api/v1/boosts/{self.user.id}")
+
+        return response
+
+    @error_handler
     async def get_tasks(self, http_client):
         response = await self.make_request(http_client, "GET", f"/farming/api/v1/tasks")
         return response
+
     @error_handler
     async def start_farm(self, http_client):
         payload = {'userId': f'{self.user.id}', 'taskId': '1'}
         response = await self.make_request(http_client, "POST", '/farming/api/v1/farming/start', json=payload)
+        return response
+
+    @error_handler
+    async def claim_farm(self, http_client, task_id: str):
+        payload = {'userId': f'{self.user.id}', 'taskId': f'{task_id}'}
+        response = await self.make_request(http_client, "POST", '/farming/api/v1/farming/claim', json=payload)
+        return response
+
+    @error_handler
+    async def get_quests_categories(self, http_client):
+        response = await self.make_request(http_client, "GET", f"/quests/api/v1/quests/categories")
+
+        return response
+
+    @error_handler
+    async def get_quests(self, http_client):
+        response = await self.make_request(http_client, "GET", f"/quests/api/v1/quests?userId={self.user.id}&size=50")
+
+        return response
+
+    @error_handler
+    async def start_quest(self, http_client, project: str, quest_id: str):
+        payload = {'project': f'{project}', 'userId': f'{self.user.id}', 'questId': f'{quest_id}'}
+        response = await self.make_request(http_client, "POST", '/quests/api/v1/start', json=payload)
+        return response
+
+    @error_handler
+    async def claim_quest(self, http_client, project: str, quest_id: str):
+        payload = {'project': f'{project}', 'userId': f'{self.user.id}', 'questId': f'{quest_id}'}
+        response = await self.make_request(http_client, "POST", '/quests/api/v1/claim', json=payload)
         return response
 
     async def run(self) -> None:
@@ -223,23 +260,79 @@ class Tapper:
                     else:
                         logger.info(f"{self.session_name} | <light-red>Login successful</light-red>")
 
+                if settings.AUTO_FARM:
+                    try:
+                        farm_status = await self.get_farm_status(http_client=http_client)
 
-                farm_status = await self.get_farm_status(http_client=http_client)
+                        if farm_status.get('code') == 200 and farm_status.get('data'):
+                            self.farming_end = utils.convert_to_local_and_unix(
+                                farm_status.get('data', [])[0].get('timeEnd')) + 120
+                            task_id = farm_status.get('data', [])[0].get('_id')
+                            is_claimed = farm_status.get('data', [])[0].get('isClaimed')
 
-                if farm_status.get('data'):
-                    self.farming_end = utils.convert_to_local_and_unix(farm_status.get('data', [])[0].get('timeEnd'))
-                    is_claimed = farm_status.get('data', [])[0].get('isClaimed')
+                            if time() > self.farming_end and is_claimed is False:
+                                await self.claim_farm(http_client=http_client, task_id=task_id)
+                                await asyncio.sleep(delay=3)
 
-                    if time() > self.farming_end and is_claimed is False:
-                        print('need a claim')
-                    else:
-                        logger.info(f"{self.session_name} | Farming in progress, next claim in {round((self.farming_end - time()) / 60, 2)} min")
+                                start = await self.start_farm(http_client=http_client)
+                                if farm_status.get('code') == 200 and farm_status.get('data'):
+                                    self.farming_end = utils.convert_to_local_and_unix(
+                                        start.get('data').get('timeEnd')) + 120
+                                    logger.info(
+                                        f"{self.session_name} | Farm started, next claim in {round((self.farming_end - time()) / 60, 2)} min")
+                                else:
+                                    print(start)
+                                    logger.warning(f"{self.session_name} | Farm not started...")
+                            else:
+                                logger.info(
+                                    f"{self.session_name} | Farming in progress, next claim in {round((self.farming_end - time()) / 60, 2)} min")
+                        else:
+                            start = await self.start_farm(http_client=http_client)
+                            if farm_status.get('code') == 200 and farm_status.get('data'):
+                                self.farming_end = utils.convert_to_local_and_unix(
+                                    start.get('data').get('timeEnd')) + 120
+                                logger.info(
+                                    f"{self.session_name} | Farm started, next claim in {round((self.farming_end - time()) / 60, 2)} min")
+                            else:
+                                print(start)
+                                logger.warning(f"{self.session_name} | Farm not started...")
 
-                else:
-                    print('start farm')
-                    start = await self.start_farm(http_client=http_client)
-                    print(start)
+                    except Exception as error:
+                        logger.error(
+                            f"<light-yellow>{self.session_name}</light-yellow> | Error while auto farming: {error}")
+                        await asyncio.sleep(delay=3)
 
+                if settings.AUTO_QUESTS:
+                    try:
+                        quests = await self.get_quests(http_client=http_client)
+                        if quests.get('code') == 200 and quests.get('data'):
+                            for quest in quests.get('data'):
+                                print(quest)
+                                if quest.get('status') == 'new':
+                                    start = await self.start_quest(http_client=http_client,
+                                                                   project=quest.get('project'),
+                                                                   quest_id=quest.get('id'))
+                                    if start:
+                                        logger.info(f"{self.session_name} | Quest {quest.get('description')} started!")
+                                    else:
+                                        logger.warning(
+                                            f"{self.session_name} | Quest {quest.get('description')} not started!")
+                                    await asyncio.sleep(delay=3)
+                                elif quest.get('status') == 'claim':
+                                    claim = await self.claim_quest(http_client=http_client,
+                                                                   project=quest.get('project'),
+                                                                   quest_id=quest.get('id'))
+                                    if claim:
+                                        logger.success(
+                                            f"{self.session_name} | Quest {quest.get('description')} claimed!")
+                                    else:
+                                        logger.warning(
+                                            f"{self.session_name} | Quest {quest.get('description')} not claimed!")
+
+                    except Exception as error:
+                        logger.error(
+                            f"<light-yellow>{self.session_name}</light-yellow> | Error while auto quests: {error}")
+                        await asyncio.sleep(delay=3)
 
                 # Close connection & reset token
                 await http_client.close()
