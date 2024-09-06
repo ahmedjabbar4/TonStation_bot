@@ -27,7 +27,7 @@ def error_handler(func: Callable):
         try:
             return await func(*args, **kwargs)
         except Exception as _ex:
-            logger.error(f"Error handling {func.__name__}: {_ex}")
+            logger.error(f"Error handling {func.__name__}: {repr(_ex)}")
             await asyncio.sleep(1)
 
     return wrapper
