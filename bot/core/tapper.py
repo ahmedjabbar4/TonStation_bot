@@ -26,7 +26,8 @@ def error_handler(func: Callable):
     async def wrapper(*args, **kwargs):
         try:
             return await func(*args, **kwargs)
-        except Exception as e:
+        except Exception as _ex:
+            logger.error(f"Error handling {func.__name__}: {_ex}")
             await asyncio.sleep(1)
 
     return wrapper
@@ -195,13 +196,11 @@ class Tapper:
     @error_handler
     async def get_quests_categories(self, http_client):
         response = await self.make_request(http_client, "GET", f"/quests/api/v1/quests/categories")
-
         return response
 
     @error_handler
     async def get_quests(self, http_client):
         response = await self.make_request(http_client, "GET", f"/quests/api/v1/quests?userId={self.user.id}&size=50")
-
         return response
 
     @error_handler
