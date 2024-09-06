@@ -46,6 +46,7 @@ class Tapper:
 
         self.user = None
         self.token = None
+
         self.errors = 0
 
         self.farming_end = None
@@ -249,6 +250,7 @@ class Tapper:
                         http_client.headers['User-Agent'] = generate_random_user_agent(device_type='android',
                                                                                        browser_type='chrome')
 
+
                 if not self.token:
                     access_token = await self.auth(http_client=http_client)
 
@@ -336,9 +338,9 @@ class Tapper:
 
                 # Close connection & reset token
                 await http_client.close()
-                # self.token = None
+                self.token = None
 
-                sleep_time = self.farming_end - time()
+                sleep_time = 3600 if self.farming_end is None else self.farming_end - time()
                 logger.info(f'<light-yellow>{self.session_name}</light-yellow> | sleep {round(sleep_time / 60, 2)} min')
                 await asyncio.sleep(sleep_time)
 
