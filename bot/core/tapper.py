@@ -1,27 +1,24 @@
 import asyncio
-from urllib.parse import unquote, quote
+import functools
 import urllib.parse
-
 from random import randint
-
 from time import time
+from typing import Callable
+from urllib.parse import unquote
+
 import aiohttp
 from aiocfscrape import CloudflareScraper
 from aiohttp_proxy import ProxyConnector
 from better_proxy import Proxy
 from pyrogram import Client
 from pyrogram.errors import Unauthorized, UserDeactivated, AuthKeyUnregistered, FloodWait
-from pyrogram.raw.functions.messages import RequestAppWebView, RequestWebView
-from pyrogram.raw import types
-from .agents import generate_random_user_agent
+from pyrogram.raw.functions.messages import RequestWebView
 
-from typing import Callable
-import functools
-
-from bot.utils import logger, utils
-from bot.exceptions import InvalidSession
-from .headers import headers, random_string
 from bot.config import settings
+from bot.exceptions import InvalidSession
+from bot.utils import logger, utils
+from .agents import generate_random_user_agent
+from .headers import headers
 
 
 def error_handler(func: Callable):
@@ -43,6 +40,7 @@ class Tapper:
         self.bot_name = 'tonstationgames_bot'  # Bot login
         self.app_url = 'https://tonstation.app/app/'  # webapp host
         self.api_endpoint = 'https://tonstation.app'
+        self.start_param = None
 
         self.user = None
         self.token = None
@@ -249,7 +247,6 @@ class Tapper:
                     if settings.FAKE_USERAGENT:
                         http_client.headers['User-Agent'] = generate_random_user_agent(device_type='android',
                                                                                        browser_type='chrome')
-
 
                 if not self.token:
                     access_token = await self.auth(http_client=http_client)

@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     REF_ID: str = ''
 
     AUTO_FARM: bool = True
-    AUTO_QUESTS: bool = True
+    AUTO_QUESTS: bool = False
 
     USE_RANDOM_DELAY_IN_RUN: bool = True
     RANDOM_DELAY_IN_RUN: list[int] = [0, 15]
