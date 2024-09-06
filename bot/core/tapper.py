@@ -305,7 +305,7 @@ class Tapper:
                         quests = await self.get_quests(http_client=http_client)
                         if quests.get('code') == 200 and quests.get('data'):
                             for quest in quests.get('data'):
-                                print(quest)
+                                # print(quest)
                                 if quest.get('status') == 'new':
                                     start = await self.start_quest(http_client=http_client,
                                                                    project=quest.get('project'),
