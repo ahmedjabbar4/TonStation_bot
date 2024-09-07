@@ -1,3 +1,7 @@
+TonStation bot. 
+
+**Donation TON: UQCz2QU1r-z966MDfv1o_6pcrFSV-hKZfNOFcTFrXkO0hsP8**
+
 ## [Settings]
 |        Settings         |                                      Description                                       |
 |:-----------------------:|:--------------------------------------------------------------------------------------:|
