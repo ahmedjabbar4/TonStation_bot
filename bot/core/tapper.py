@@ -26,8 +26,7 @@ def error_handler(func: Callable):
     async def wrapper(*args, **kwargs):
         try:
             return await func(*args, **kwargs)
-        except Exception as _ex:
-            logger.error(f"Error handling {func.__name__}: {repr(_ex)}")
+        except Exception as e:
             await asyncio.sleep(1)
 
     return wrapper
@@ -162,7 +161,7 @@ class Tapper:
 
     @error_handler
     async def login(self, http_client):
-        response = await self.make_request(http_client, "POST", "/user-rates/login", json={'userId': self.user.id})
+        response = await self.make_request(http_client, "POST", "/farming/api/v1/user-rates/login", json={'userId': f'{self.user.id}'})
         return response
 
     @error_handler
@@ -196,11 +195,13 @@ class Tapper:
     @error_handler
     async def get_quests_categories(self, http_client):
         response = await self.make_request(http_client, "GET", f"/quests/api/v1/quests/categories")
+
         return response
 
     @error_handler
     async def get_quests(self, http_client):
         response = await self.make_request(http_client, "GET", f"/quests/api/v1/quests?userId={self.user.id}&size=50")
+
         return response
 
     @error_handler
@@ -249,6 +250,9 @@ class Tapper:
 
                 if not self.token:
                     access_token = await self.auth(http_client=http_client)
+                    await asyncio.sleep(delay=0.5)
+
+                    await self.login(http_client=http_client)
 
                     if access_token.get('code') == 403:
                         logger.info(f"{self.session_name} | Failed login")
@@ -279,8 +283,7 @@ class Tapper:
                                     logger.info(
                                         f"{self.session_name} | Farm started, next claim in {round((self.farming_end - time()) / 60, 2)} min")
                                 else:
-                                    print(start)
-                                    logger.warning(f"{self.session_name} | Farm not started...")
+                                    logger.warning(f"{self.session_name} | The server returned code: {farm_status.get('code')}")
                             else:
                                 logger.info(
                                     f"{self.session_name} | Farming in progress, next claim in {round((self.farming_end - time()) / 60, 2)} min")
@@ -292,8 +295,7 @@ class Tapper:
                                 logger.info(
                                     f"{self.session_name} | Farm started, next claim in {round((self.farming_end - time()) / 60, 2)} min")
                             else:
-                                print(start)
-                                logger.warning(f"{self.session_name} | Farm not started...")
+                                logger.warning(f"{self.session_name} | The server returned code: {farm_status.get('code')}")
 
                     except Exception as error:
                         logger.error(
@@ -305,7 +307,7 @@ class Tapper:
                         quests = await self.get_quests(http_client=http_client)
                         if quests.get('code') == 200 and quests.get('data'):
                             for quest in quests.get('data'):
-                                # print(quest)
+                                #print(quest)
                                 if quest.get('status') == 'new':
                                     start = await self.start_quest(http_client=http_client,
                                                                    project=quest.get('project'),
@@ -315,6 +317,9 @@ class Tapper:
                                     else:
                                         logger.warning(
                                             f"{self.session_name} | Quest {quest.get('description')} not started!")
+                                    await asyncio.sleep(delay=3)
+                                elif quest.get('status') == 'progress':
+                                    logger.warning(f"{self.session_name} | Quest {quest.get('description')} In progress, check in app!")
                                     await asyncio.sleep(delay=3)
                                 elif quest.get('status') == 'claim':
                                     claim = await self.claim_quest(http_client=http_client,
@@ -326,6 +331,8 @@ class Tapper:
                                     else:
                                         logger.warning(
                                             f"{self.session_name} | Quest {quest.get('description')} not claimed!")
+
+                                    await asyncio.sleep(delay=3)
 
                     except Exception as error:
                         logger.error(
