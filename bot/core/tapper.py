@@ -161,7 +161,20 @@ class Tapper:
 
     @error_handler
     async def login(self, http_client):
-        response = await self.make_request(http_client, "POST", "/farming/api/v1/user-rates/login", json={'userId': f'{self.user.id}'})
+        response = await self.make_request(http_client, "POST", "/farming/api/v1/user-rates/login",
+                                           json={'userId': f'{self.user.id}'})
+        return response
+
+    @error_handler
+    async def get_user_profile(self, http_client):
+        response = await self.make_request(http_client, "GET",
+                                           f"/userprofile/api/v1/users/{self.user.id}/by-telegram-id")
+        return response
+
+    @error_handler
+    async def balance_by_address(self, http_client, address: str):
+        response = await self.make_request(http_client, "GET",
+                                           f"/balance/api/v1/balance/{address}/by-address")
         return response
 
     @error_handler
@@ -172,7 +185,6 @@ class Tapper:
     @error_handler
     async def get_farm_boosts(self, http_client):
         response = await self.make_request(http_client, "GET", f"/farming/api/v1/boosts/{self.user.id}")
-
         return response
 
     @error_handler
@@ -260,7 +272,16 @@ class Tapper:
                         await asyncio.sleep(delay=300)
                         continue
                     else:
-                        logger.info(f"{self.session_name} | <light-red>Login successful</light-red>")
+                        user_profile = await self.get_user_profile(http_client)
+                        wallet = user_profile.get('address')
+                        balance_data = await self.balance_by_address(http_client=http_client, address=wallet)
+                        balance = round(balance_data.get('data').get('balance', [])[0].get('balance'))
+                        logger.info(
+                            f"{self.session_name} | <light-red>Login successful.</light-red> Balance: {balance} Wallet: {wallet}")
+
+                        await self.get_farm_boosts(http_client)
+                        await asyncio.sleep(delay=0.5)
+                        await self.get_tasks(http_client)
 
                 if settings.AUTO_FARM:
                     try:
@@ -283,7 +304,8 @@ class Tapper:
                                     logger.info(
                                         f"{self.session_name} | Farm started, next claim in {round((self.farming_end - time()) / 60, 2)} min")
                                 else:
-                                    logger.warning(f"{self.session_name} | The server returned code: {farm_status.get('code')}")
+                                    logger.warning(
+                                        f"{self.session_name} | The server returned code: {farm_status.get('code')}")
                             else:
                                 logger.info(
                                     f"{self.session_name} | Farming in progress, next claim in {round((self.farming_end - time()) / 60, 2)} min")
@@ -295,7 +317,8 @@ class Tapper:
                                 logger.info(
                                     f"{self.session_name} | Farm started, next claim in {round((self.farming_end - time()) / 60, 2)} min")
                             else:
-                                logger.warning(f"{self.session_name} | The server returned code: {farm_status.get('code')}")
+                                logger.warning(
+                                    f"{self.session_name} | The server returned code: {farm_status.get('code')}")
 
                     except Exception as error:
                         logger.error(
@@ -307,7 +330,7 @@ class Tapper:
                         quests = await self.get_quests(http_client=http_client)
                         if quests.get('code') == 200 and quests.get('data'):
                             for quest in quests.get('data'):
-                                #print(quest)
+                                # print(quest)
                                 if quest.get('status') == 'new':
                                     start = await self.start_quest(http_client=http_client,
                                                                    project=quest.get('project'),
@@ -319,7 +342,8 @@ class Tapper:
                                             f"{self.session_name} | Quest {quest.get('description')} not started!")
                                     await asyncio.sleep(delay=3)
                                 elif quest.get('status') == 'progress':
-                                    logger.warning(f"{self.session_name} | Quest {quest.get('description')} In progress, check in app!")
+                                    logger.warning(
+                                        f"{self.session_name} | Quest {quest.get('description')} In progress, check in app!")
                                     await asyncio.sleep(delay=3)
                                 elif quest.get('status') == 'claim':
                                     claim = await self.claim_quest(http_client=http_client,
